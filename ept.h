@@ -68,6 +68,12 @@ struct ept
       if((ept)->state == RUN) (f);      \
      }while(0)
 
+#define EPT_INIT(ept) \  
+  do{                 \
+  PT_INIT(ept);       \
+  (ept)->state = RUN  \
+  } while(0)          
+
 #ifdef EPT_TICK_FREQ_HZ
 volatile uint32_t ept_tc = 0; //tick counter
 void ept_timer_tick(){  ept_tc += EPT_TICK_PERIOD_mS; }
