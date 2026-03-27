@@ -1,0 +1,7 @@
+.vscode/*
+/Demo/EWARM/*
+/Demo/.vscode/*
+
+!*.ewp
+!*.s
+!*.icf
