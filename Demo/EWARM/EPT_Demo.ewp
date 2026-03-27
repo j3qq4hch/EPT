@@ -368,9 +368,9 @@
                     <state>$PROJ_DIR$/../Drivers/STM32F0xx_HAL_Driver/Inc</state>
                     <state>$PROJ_DIR$/../Drivers/CMSIS/Device/ST/STM32F0xx/Include</state>
                     <state>$PROJ_DIR$/../Drivers/CMSIS/Include</state>
-                    <state>$PROJ_DIR$\..\..\API</state>
-                    <state>$PROJ_DIR$/../</state>
-                    <state>$PROJ_DIR$\..\..\EPT</state>
+                    <state>$PROJ_DIR$/../API</state>
+                    <state>$PROJ_DIR$/../..</state>
+                    <state>$PROJ_DIR$/..</state>
                 </option>
                 <option>
                     <name>CCStdIncCheck</name>
@@ -1165,7 +1165,7 @@
     <group>
         <name>EPT</name>
         <file>
-            <name>$PROJ_DIR$\..\..\ept\ept_scheduler.c</name>
+            <name>$PROJ_DIR$\..\..\ept_scheduler.c</name>
         </file>
     </group>
     <file>
