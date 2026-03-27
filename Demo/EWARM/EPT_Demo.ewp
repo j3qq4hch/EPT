@@ -243,10 +243,11 @@
                     <state>INSTRUCTION_CACHE_ENABLE=0</state>
                     <state>DATA_CACHE_ENABLE=0</state>
                     <state>STM32F030x8</state>
+                    <state>EPT_TICK_FREQ_HZ=1000</state>
                 </option>
                 <option>
                     <name>CCPreprocFile</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>CCPreprocComments</name>

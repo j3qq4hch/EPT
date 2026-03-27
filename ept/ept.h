@@ -3,10 +3,13 @@
 
 #include "pt.h"
 #include <stdint.h>
-#define EPT_INVALID_THREAD      0xFF
-#define EPT_TICK_FREQ_HZ        1000
-#define EPT_TICK_PERIOD_mS      (1000 / EPT_TICK_FREQ_HZ)
 
+#define EPT_INVALID_THREAD      0xFF
+#ifndef EPT_TICK_FREQ_HZ
+#define EPT_TICK_FREQ_HZ        1000
+#pragma message("EPT_TICK_FREQ_HZ not defined in preprocessor settings. Using value 1000")
+#endif
+#define EPT_TICK_PERIOD_mS      (1000 / EPT_TICK_FREQ_HZ)
 
 #define EPT_BEGIN     PT_BEGIN
 #define EPT_END       PT_END
@@ -17,6 +20,7 @@
 #define EPT_EXITED    PT_EXITED
 #define EPT_ENDED     PT_ENDED
 #define EPT_SLEEPING  4
+
 // #define PT_WAITING 0 //means that thread is waiting for some condition. Can sleep
 // #define PT_YIELDED 1 //Thread is active and has something to do
 // #define PT_EXITED  2 //can never happen with schedulable threads
@@ -28,9 +32,12 @@ typedef struct
   uint32_t interval; //If this is 0, the timer is not set
 }ept_timer_t;
 
-extern volatile uint32_t ept_tc; //tick counter
+extern volatile uint32_t ept_tc; //tick counter in milliseconds
 
-static inline void ept_timer_tick(){ ept_tc += EPT_TICK_PERIOD_mS; }
+static inline void ept_timer_tick()
+{
+  ept_tc += EPT_TICK_PERIOD_mS; 
+}
 
 static inline void ept_timer_set(ept_timer_t * t, uint32_t interval_ms)
 {
