@@ -131,9 +131,9 @@ void ept_scheduler()
   }
 }
 
-#include <stdio.h>
 #include <string.h>
 #ifndef __SNPRINTF 
+#include <stdio.h>
 #define __SNPRINTF snprintf
 #endif
 static const char* const state_str[] = {"STOP", "RUN"};
