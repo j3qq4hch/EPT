@@ -133,7 +133,9 @@ void ept_scheduler()
 
 #include <stdio.h>
 #include <string.h>
+#ifndef __SNPRINTF 
 #define __SNPRINTF snprintf
+#endif
 static const char* const state_str[] = {"STOP", "RUN"};
 
 uint8_t thread_record_snprint(char* buf, uint16_t buflen, const thread_record* record)
@@ -195,7 +197,7 @@ void reset_profiler()
   }
 }
 
-//returns worst case 
+//returns the longest time thread had control in microseconds
 uint32_t thread_get_exec_time_us(uint8_t index)
 {
   if(index < THREADNUM) 
@@ -205,6 +207,7 @@ uint32_t thread_get_exec_time_us(uint8_t index)
   }return INT32_MAX;
 }
 
+//returns the longest time that all the loop took in microseconds
 uint32_t loop_get_exec_time_us()
 {
   //return loop_max_exec_time_raw * EPT_TICK_FREQ_HZ / SysTick_ARR;
