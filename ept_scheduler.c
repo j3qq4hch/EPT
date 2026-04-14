@@ -134,14 +134,14 @@ void ept_scheduler()
   }
 }
 
-#include <stdio.h>
 #include <string.h>
 #ifndef __SNPRINTF 
+#include <stdio.h>
 #define __SNPRINTF snprintf
 #endif
 static const char* const state_str[] = {"STOP", "RUN"};
 
-uint8_t thread_record_snprint(char* buf, uint16_t buflen, const thread_record* record)
+uint8_t thread_record_snprintf(char* buf, uint16_t buflen, const thread_record* record)
 {
 uint32_t index = record - threadlist;
   return __SNPRINTF(buf, buflen, "%i:%-8s:%-04s; Debug level: %i\r\n", index, 
