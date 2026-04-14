@@ -28,7 +28,6 @@ static struct ept ept[THREADNUM];
     static uint32_t loop_max_exec_time_raw = 0;
     static uint32_t thread_max_exec_time_raw[THREADNUM] = {0};
     static uint32_t dif;
-    static uint32_t SysTick_ARR;
 
     static inline void get_timestamp(timestamp_t * t)
     {
@@ -41,8 +40,9 @@ static struct ept ept[THREADNUM];
     static uint32_t timestamp_dif_ticks(timestamp_t * start, timestamp_t *stop)
     {
       volatile uint32_t c;
+      uint32_t tmp = SysTick->LOAD + 1;
       c = stop->ept_tick - start->ept_tick;
-      c *= SysTick_ARR;
+      c *= tmp;
       c += start->sys_tick; 
       c -= stop->sys_tick;
       return c;
@@ -60,9 +60,6 @@ static uint16_t active_tasks;
 
 void ept_scheduler()
 {
-#ifdef PROFILER
-    SysTick_ARR = SysTick->LOAD + 1;
-#endif
     for(uint8_t i = 0; i < THREADNUM; i++) 
     {
       PT_INIT(&ept[i]);
