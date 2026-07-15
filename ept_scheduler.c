@@ -19,6 +19,7 @@ const thread_record *active_thread   = NULL;
 uint8_t              active_dbg_level;
 uint8_t              dbg_level[THREADNUM];
 static struct ept    ept_arr[THREADNUM];
+static uint32_t      loop_count; // scheduler passes; see loops_cmd
 
 // ---- Profiler ---------------------------------------------------------------
 // Requires CMSIS (SysTick->VAL, SysTick->LOAD).
@@ -76,6 +77,7 @@ void ept_scheduler(void)
     }
 
     while (1) {
+        loop_count++;
 #ifdef LOW_POWER_MODE
         lp_any_active = 0;
 #endif
@@ -226,6 +228,30 @@ CLI_retval_t ept_cmd(char *args[], uint8_t argno)
     if      (strcmp(args[1], "run")  == 0) thread_cmd(t, RUN);
     else if (strcmp(args[1], "stop") == 0) thread_cmd(t, STOP);
     else return CLI_ERROR;
+    return CLI_OK;
+}
+
+// Loop-rate diagnostic. With LOW_POWER_MODE the idle rate is ~EPT_TICK_FREQ_HZ
+// passes/s (one wake per SysTick); a free-running rate orders of magnitude
+// higher means some thread keeps reporting EPT_ACTIVE and the MCU never sleeps.
+// Rate is measured between consecutive calls — call twice, >=1 s apart.
+CLI_retval_t loops_cmd(char *args[], uint8_t argno)
+{
+    static uint32_t prev_count, prev_tc;
+    (void)args; (void)argno;
+
+    uint32_t d_count = loop_count - prev_count;
+    uint32_t d_ms    = ept_tc - prev_tc;
+    prev_count += d_count;
+    prev_tc    += d_ms;
+
+    if (d_ms < 1000) {
+        __SNPRINTF(cli_response_buf, cli_max_resp_len,
+                   "\r\nwait >=1s between calls");
+        return CLI_OK;
+    }
+    __SNPRINTF(cli_response_buf, cli_max_resp_len, "\r\n%u loops/s",
+               (unsigned)(d_count / (d_ms / 1000)));
     return CLI_OK;
 }
 
