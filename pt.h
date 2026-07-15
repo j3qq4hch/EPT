@@ -55,10 +55,15 @@ struct pt {
   lc_t lc;
 };
 
+// Status codes are ordered so that every "still running" state (WAITING,
+// YIELDED, and EPT_SLEEPING == 2 defined in ept.h) sorts below the terminal
+// states. PT_SCHEDULE() relies on this: a child is alive while its status is
+// < PT_EXITED. EPT_SLEEPING must stay in this running band, otherwise a spawned
+// child that sleeps would be seen as finished by its parent.
 #define PT_WAITING 0
 #define PT_YIELDED 1
-#define PT_EXITED  2
-#define PT_ENDED   3
+#define PT_EXITED  3
+#define PT_ENDED   4
 
 /**
  * \name Initialization

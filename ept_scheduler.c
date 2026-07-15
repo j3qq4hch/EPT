@@ -1,217 +1,277 @@
-
+#include <string.h>
 #include "ept_scheduler.h"
+
+#define EPT_IMPLEMENTATION
 #define EPT_SCHEDULER_IMPLEMENTATION
 #include "ept_cfg.h"
 
+#include "snprintf_compat.h"
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
-#define THREADNUM        ARRAY_SIZE(threadlist)
-void * thread_ctx;
-thread_record const* active_thread = NULL;
-uint8_t active_dbg_level;
-uint8_t dbg_level[THREADNUM];
-static struct ept ept[THREADNUM];
+#define THREADNUM       ARRAY_SIZE(threadlist)
 
+void                *thread_ctx;
+const thread_record *active_thread   = NULL;
+uint8_t              active_dbg_level;
+uint8_t              dbg_level[THREADNUM];
+static struct ept    ept_arr[THREADNUM];
+
+// ---- Profiler ---------------------------------------------------------------
+// Requires CMSIS (SysTick->VAL, SysTick->LOAD).
+// Include the platform CMSIS header in ept_cfg.h under #ifdef PROFILER.
 #ifdef PROFILER
-    #include "stm32f0xx.h"
-
-    typedef struct
-    {
-      uint32_t ept_tick;
-      uint32_t sys_tick;
-    }timestamp_t;
-
-    static timestamp_t loop_begin_timestamp;
-    static timestamp_t loop_end_timestamp;
-    static timestamp_t thread_entry_timestamp;
-    static timestamp_t thread_yeild_timestamp;
-
-    static uint32_t loop_max_exec_time_raw = 0;
-    static uint32_t thread_max_exec_time_raw[THREADNUM] = {0};
-    static uint32_t dif;
-
-    static inline void get_timestamp(timestamp_t * t)
-    {
-      do{
-        t->ept_tick = ept_tc; // ORDER OF THESE TWO OPERATIONS IS CRITICAL AND MUST NOT BE CHANGED
-        t->sys_tick = SysTick->VAL;
-      }while(t->ept_tick != ept_tc);
-    }
-
-    static uint32_t timestamp_dif_ticks(timestamp_t * start, timestamp_t *stop)
-    {
-      volatile uint32_t c;
-      uint32_t tmp = SysTick->LOAD + 1;
-      c = stop->ept_tick - start->ept_tick;
-      c *= tmp;
-      c += start->sys_tick; 
-      c -= stop->sys_tick;
-      return c;
-    }
-#endif //#ifdef PROFILER
-
-#ifdef LOW_POWER_MODE
-static uint32_t wake_time;
-static uint32_t minimal_wake_time; 
-ept_timer_t sleep_timer;
-uint8_t volatile tc_flag;
-static uint8_t state;
-static uint16_t active_tasks;
+#ifndef EPT_CPU_FREQ_HZ
+#error "EPT_CPU_FREQ_HZ is not defined. Add it to your build system: -DEPT_CPU_FREQ_HZ=48000000UL"
 #endif
+typedef struct {
+    uint32_t ept_tick;
+    uint32_t sys_tick;
+} timestamp_t;
 
-void ept_scheduler()
+static timestamp_t loop_begin_ts;
+static timestamp_t loop_end_ts;
+static timestamp_t thread_entry_ts;
+static timestamp_t thread_yield_ts;
+
+static uint32_t loop_max_raw              = 0;
+static uint32_t thread_max_raw[THREADNUM] = {0};
+static uint32_t profiler_dif;
+
+// Retry if SysTick fires between the two reads — order is critical.
+static inline void get_timestamp(timestamp_t *t)
 {
-    for(uint8_t i = 0; i < THREADNUM; i++) 
-    {
-      PT_INIT(&ept[i]);
-      ept[i].state = threadlist[i].init_state;
-      dbg_level[i] = threadlist[i].init_dbg_level;
-    }
-    while(1)
-    {    
+    do {
+        t->ept_tick = ept_tc;
+        t->sys_tick = SysTick->VAL;
+    } while (t->ept_tick != ept_tc);
+}
+
+static uint32_t timestamp_dif_ticks(timestamp_t *start, timestamp_t *stop)
+{
+    uint32_t ticks_per_ms = SysTick->LOAD + 1;
+    uint32_t c = stop->ept_tick - start->ept_tick;
+    c *= ticks_per_ms;
+    c += start->sys_tick;
+    c -= stop->sys_tick;
+    return c;
+}
+#endif // PROFILER
+
+// ---- Low-power mode ---------------------------------------------------------
 #ifdef LOW_POWER_MODE
-      active_tasks = 0;  
-      minimal_wake_time = UINT32_MAX;
+static uint32_t    lp_wake_time;
+static uint32_t    lp_min_wake_time;
+static ept_timer_t lp_sleep_timer;
+static uint8_t     lp_state;
+static uint16_t    lp_active_tasks;
+volatile uint8_t   ept_tc_flag; // set by SysTick ISR (and any other wakeup ISR)
+#endif
+
+// ---- Scheduler --------------------------------------------------------------
+void ept_scheduler(void)
+{
+    for (uint8_t i = 0; i < THREADNUM; i++) {
+        PT_INIT(&ept_arr[i]);
+        ept_arr[i].state = threadlist[i].init_state;
+        dbg_level[i]     = threadlist[i].init_dbg_level;
+    }
+
+    while (1) {
+#ifdef LOW_POWER_MODE
+        lp_active_tasks  = 0;
+        lp_min_wake_time = UINT32_MAX;
 #endif
 #ifdef PROFILER
-        get_timestamp(&loop_begin_timestamp);
+        get_timestamp(&loop_begin_ts);
 #endif
-        for(uint8_t i = 0; i < THREADNUM; i++)
-        {    
-            if(ept[i].state == RUN)
-            { 
-              active_thread = &threadlist[i];
-              active_dbg_level = dbg_level[i];
-              thread_ctx = threadlist[i].context;
+
+        for (uint8_t i = 0; i < THREADNUM; i++) {
+            if (ept_arr[i].state == RUN) {
+                active_thread    = &threadlist[i];
+                active_dbg_level = dbg_level[i];
+                thread_ctx       = threadlist[i].context;
+
 #ifdef PROFILER
-              get_timestamp(&thread_entry_timestamp);
+                get_timestamp(&thread_entry_ts);
 #endif
 
 #ifdef LOW_POWER_MODE
-              state = threadlist[i].thread(&ept[i]); //Thread execution               
-              if(state == EPT_SLEEPING) 
-              {
-                wake_time = ept[i].t.interval + ept[i].t.set_time - ept_tc;
-                if(wake_time < minimal_wake_time) minimal_wake_time = wake_time;
-              } 
-              else 
-              {
-                active_tasks += state; 
-              }
+                lp_state = threadlist[i].thread(&ept_arr[i]);
+                if (lp_state == EPT_SLEEPING) {
+                    lp_wake_time = ept_arr[i].t.interval + ept_arr[i].t.set_time - ept_tc;
+                    if (lp_wake_time < lp_min_wake_time)
+                        lp_min_wake_time = lp_wake_time;
+                } else if (lp_state == EPT_YIELDED) {
+                    lp_active_tasks++;
+                }
 #else
-             threadlist[i].thread(&ept[i]);
+                threadlist[i].thread(&ept_arr[i]);
 #endif
-#ifdef PROFILER              
-              get_timestamp(&thread_yeild_timestamp);
-              dif = timestamp_dif_ticks(&thread_entry_timestamp, &thread_yeild_timestamp);
-              if(dif > thread_max_exec_time_raw[i]) thread_max_exec_time_raw[i] = dif;
+
+#ifdef PROFILER
+                get_timestamp(&thread_yield_ts);
+                profiler_dif = timestamp_dif_ticks(&thread_entry_ts, &thread_yield_ts);
+                if (profiler_dif > thread_max_raw[i])
+                    thread_max_raw[i] = profiler_dif;
 #endif
             }
-#ifdef PROFILER
-        get_timestamp(&loop_end_timestamp);
-        dif = timestamp_dif_ticks(&loop_begin_timestamp, &loop_end_timestamp);
-        if(dif > loop_max_exec_time_raw) loop_max_exec_time_raw = dif;
-#endif
-
         }
-#ifdef LOW_POWER_MODE
-        if(!active_tasks) //if all threads returned PT_WAITING
-        {
-          if(minimal_wake_time != UINT32_MAX) //If there are at least some sleeping threads
-          {
-            ept_timer_set(&sleep_timer, minimal_wake_time);
-          }
-          while(!ept_timer_expired(&sleep_timer))
-          {
-            tc_flag = 0;
-            __WFI();
-            if(!tc_flag) break; // This means that some other then SysTick ISR happened
-          }
-        } 
-#endif
-  }
-}
-
-#include <string.h>
-#ifndef __SNPRINTF 
-#include <stdio.h>
-#define __SNPRINTF snprintf
-#endif
-static const char* const state_str[] = {"STOP", "RUN"};
-
-uint8_t thread_record_snprintf(char* buf, uint16_t buflen, const thread_record* record)
-{
-uint32_t index = record - threadlist;
-  return __SNPRINTF(buf, buflen, "%i:%-8s:%-04s; Debug level: %i\r\n", index, 
-                                                                       record->name,
-                                                                       state_str[ept[index].state],
-                                                                       dbg_level[index]);
-}
-
-const thread_record* thread_by_name(char * name)
-{
-  for(uint8_t i = 0; i < THREADNUM; i++)
-  {
-    if(strcmp(threadlist[i].name, name)==0) return &threadlist[i];
-  }
-  return NULL;
-}
-
-const thread_record* thread_by_index(uint8_t index)
-{
-  if(index < ARRAY_SIZE(threadlist)) return &threadlist[index];
-  return NULL;
-}
-
-//return thread index if found. 
-//returnx INVALID_THREAD is not found
-uint8_t thread_index_by_name(char * name)
-{
-  for(uint8_t i = 0; i < THREADNUM; i++)
-  {
-    if(strcmp(threadlist[i].name, name)==0) return i;
-  }
-  return EPT_INVALID_THREAD;
-}
-
-void thread_cmd(const thread_record* record, ept_state_t state)
-{
-  if(record == NULL) return;
-  uint32_t index = record - threadlist;
-  ept[index].state = state;
-  PT_INIT(&ept[index]);
-}
-
-void thread_set_debug(const thread_record* record, uint8_t lvl)
-{
-  uint32_t index = record - threadlist;
-  dbg_level[index] = lvl;
-}
 
 #ifdef PROFILER
-void reset_profiler()
-{
-  loop_max_exec_time_raw = 0;
-  for(uint8_t i = 0; i < THREADNUM; i++)
-  {
-    thread_max_exec_time_raw[i] = 0;
-  }
+        get_timestamp(&loop_end_ts);
+        profiler_dif = timestamp_dif_ticks(&loop_begin_ts, &loop_end_ts);
+        if (profiler_dif > loop_max_raw)
+            loop_max_raw = profiler_dif;
+#endif
+
+#ifdef LOW_POWER_MODE
+        if (!lp_active_tasks) {
+            if (lp_min_wake_time != UINT32_MAX)
+                ept_timer_set(&lp_sleep_timer, lp_min_wake_time);
+            do {
+                ept_tc_flag = 0;
+                __WFI();
+                if (!ept_tc_flag) break; // non-SysTick ISR fired — check tasks immediately
+            } while (lp_min_wake_time != UINT32_MAX && !ept_timer_expired(&lp_sleep_timer));
+        }
+#endif
+    }
 }
 
-//returns the longest time thread had control in microseconds
+// ---- Utilities --------------------------------------------------------------
+static const char *const state_str[] = {"STOP", "RUN"};
+
+uint16_t thread_record_snprint(char *buf, uint16_t buflen, const thread_record *record)
+{
+    uint32_t index = (uint32_t)(record - threadlist);
+    return (uint16_t)__SNPRINTF(buf, buflen, "%i:%-8s:%-4s dbg:%i\r\n",
+                                 (unsigned)index,
+                                 record->name,
+                                 state_str[ept_arr[index].state],
+                                 (unsigned)dbg_level[index]);
+}
+
+const thread_record *thread_by_name(const char *name)
+{
+    for (uint8_t i = 0; i < THREADNUM; i++) {
+        if (strcmp(threadlist[i].name, name) == 0)
+            return &threadlist[i];
+    }
+    return NULL;
+}
+
+const thread_record *thread_by_index(uint8_t index)
+{
+    if (index < THREADNUM)
+        return &threadlist[index];
+    return NULL;
+}
+
+uint8_t thread_index_by_name(const char *name)
+{
+    for (uint8_t i = 0; i < THREADNUM; i++) {
+        if (strcmp(threadlist[i].name, name) == 0)
+            return i;
+    }
+    return EPT_INVALID_THREAD;
+}
+
+void thread_cmd(const thread_record *record, ept_state_t state)
+{
+    if (record == NULL) return;
+    uint32_t index = (uint32_t)(record - threadlist);
+    ept_arr[index].state = state;
+    PT_INIT(&ept_arr[index]);
+}
+
+void thread_set_debug(const thread_record *record, uint8_t lvl)
+{
+    uint32_t index = (uint32_t)(record - threadlist);
+    dbg_level[index] = lvl;
+}
+
+// ---- Profiler API -----------------------------------------------------------
+#ifdef PROFILER
 uint32_t thread_get_exec_time_us(uint8_t index)
 {
-  if(index < THREADNUM) 
-  {
-    //return thread_max_exec_time_raw[index] * EPT_TICK_FREQ_HZ / SysTick_ARR;
-    return thread_max_exec_time_raw[index] / 48;
-  }return INT32_MAX;
+    if (index < THREADNUM)
+        return thread_max_raw[index] / (EPT_CPU_FREQ_HZ / 1000000UL);
+    return UINT32_MAX;
 }
 
-//returns the longest time that all the loop took in microseconds
-uint32_t loop_get_exec_time_us()
+uint32_t loop_get_exec_time_us(void)
 {
-  //return loop_max_exec_time_raw * EPT_TICK_FREQ_HZ / SysTick_ARR;
-  return loop_max_exec_time_raw / 48;
+    return loop_max_raw / (EPT_CPU_FREQ_HZ / 1000000UL);
 }
 
-#endif
+void reset_profiler(void)
+{
+    loop_max_raw = 0;
+    for (uint8_t i = 0; i < THREADNUM; i++)
+        thread_max_raw[i] = 0;
+}
+#endif // PROFILER
+
+// ---- CLI commands -----------------------------------------------------------
+#include <stdlib.h>
+#include "ept_cli.h"
+
+static uint16_t ept_list_gen(uint16_t state, char *buf, uint16_t buflen)
+{
+    const thread_record *t = thread_by_index((uint8_t)state);
+    if (t == NULL) return 0;
+    return (uint16_t)thread_record_snprint(buf, buflen, t);
+}
+
+CLI_retval_t ept_cmd(char *args[], uint8_t argno)
+{
+    if (argno == 0) {
+        cli_gen = ept_list_gen;
+        return CLI_LONG_RESPONSE;
+    }
+    const thread_record *t = thread_by_name(args[0]);
+    if (t == NULL) {
+        __SNPRINTF(cli_response_buf, cli_max_resp_len, "\r\nUnknown thread: %s", args[0]);
+        return CLI_ERROR;
+    }
+    if (argno < 2) return CLI_ERROR;
+    if      (strcmp(args[1], "run")  == 0) thread_cmd(t, RUN);
+    else if (strcmp(args[1], "stop") == 0) thread_cmd(t, STOP);
+    else return CLI_ERROR;
+    return CLI_OK;
+}
+
+CLI_retval_t dbg_cmd(char *args[], uint8_t argno)
+{
+    if (argno < 2) return CLI_ERROR;
+    const thread_record *t = thread_by_name(args[0]);
+    if (t == NULL) {
+        __SNPRINTF(cli_response_buf, cli_max_resp_len, "\r\nUnknown thread: %s", args[0]);
+        return CLI_ERROR;
+    }
+    thread_set_debug(t, (uint8_t)atoi(args[1]));
+    return CLI_OK;
+}
+
+#ifdef PROFILER
+static uint16_t prof_gen(uint16_t state, char *buf, uint16_t buflen)
+{
+    const thread_record *t = thread_by_index((uint8_t)state);
+    if (t != NULL)
+        return (uint16_t)__SNPRINTF(buf, buflen, "%-8s %i us\r\n",
+                                    t->name,
+                                    (int)thread_get_exec_time_us(state));
+    if (thread_by_index((uint8_t)(state - 1)) != NULL)
+        return (uint16_t)__SNPRINTF(buf, buflen, "loop     %i us\r\n",
+                                    (int)loop_get_exec_time_us());
+    return 0;
+}
+
+CLI_retval_t prof_cmd(char *args[], uint8_t argno)
+{
+    (void)args; (void)argno;
+    reset_profiler();
+    cli_gen = prof_gen;
+    return CLI_LONG_RESPONSE;
+}
+#endif // PROFILER
