@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include "drv_basic.h"
 #include "ept_scheduler.h"
-#include "resources.h"
-#include "color.h"
-// Provide in resources.h (optional — omit if no project-specific types):
+#include "resources.h" // project-provided, by convention
+// Provide in resources.h (optional — omit if no project-specific types).
+// resources.h must itself include the headers of every type it lists:
 //   #define EPT_TYPES_LIST \
 //       my_sensor_t *: my_sensor_snprint, \
 //       const my_sensor_t *: my_sensor_snprint,
