@@ -21,6 +21,9 @@
 #pragma message("EPT_TICK_FREQ_HZ not defined. Defaulting to 1000 Hz.")
 #endif
 #define EPT_TICK_PERIOD_MS (1000 / EPT_TICK_FREQ_HZ)
+#if (EPT_TICK_FREQ_HZ > 1000) || (1000 % EPT_TICK_FREQ_HZ != 0)
+#error "EPT_TICK_FREQ_HZ must divide 1000 evenly (the tick period is an integer number of ms)"
+#endif
 
 #define EPT_INVALID_THREAD 0xFF
 
