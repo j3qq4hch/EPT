@@ -2,8 +2,10 @@
 #define EPT_CFG_H_
 
 // ---- Tick frequency ---------------------------------------------------------
-// Must match the SysTick ISR call rate.
-#define EPT_TICK_FREQ_HZ  1000
+// EPT_TICK_FREQ_HZ must match the SysTick ISR call rate and must be defined in
+// the PREPROCESSOR SETTINGS (e.g. -DEPT_TICK_FREQ_HZ=1000), NOT here: ept.h is
+// included by the scheduler before this file, so a define here never reaches it.
+// At 1000 Hz it may be omitted (that is the ept.h default).
 
 // ---- Optional features ------------------------------------------------------
 // #define PROFILER        // measure per-thread and loop execution time
