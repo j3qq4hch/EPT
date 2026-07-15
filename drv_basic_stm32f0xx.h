@@ -13,6 +13,10 @@
 
 static inline void drv_sleep(void) { __WFI(); }
 
+// NOTE: the flash backend (flash_page_erase/flash_write_data, see the C0 port)
+// is not implemented for F0 yet — F0 programs half-words, not double words.
+// ept_settings.c will fail to link on F0 until it is added.
+
 // ---- GPIO -------------------------------------------------------------------
 
 typedef struct {

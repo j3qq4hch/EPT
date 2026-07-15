@@ -56,6 +56,17 @@ static inline void uart_flush_rx(uart_t *u) { u->rx_tail = u->rx_head; }
 uint16_t pin_snprint (char *buf, uint16_t buflen, const pin_t  *p);
 uint16_t uart_snprint(char *buf, uint16_t buflen, const uart_t *u);
 
+// ---- Flash ------------------------------------------------------------------
+// Minimal internal-flash ops (settings storage backend, see ept_settings.c).
+// Blocking; do not call with interrupts executing from the same flash bank.
+
+#ifndef FLASH_PAGE_SIZE
+#define FLASH_PAGE_SIZE 2048
+#endif
+
+void flash_page_erase(uint32_t addr);
+void flash_write_data(uint32_t addr, uint8_t *data, uint16_t len);
+
 #endif // DRV_BASIC_H_
 
 // ---- Implementation ---------------------------------------------------------
@@ -162,6 +173,77 @@ uint16_t uart_snprint(char *buf, uint16_t buflen, const uart_t *u)
                                 u->name,
                                 (unsigned)uart_available((uart_t *)u),
                                 uart_tx_busy((uart_t *)u) ? "busy" : "idle");
+}
+
+// ---- Flash --------------------------------------------------------------------
+// Write sequence per RM0490 section 4.3.6. Only double words (64 bit) can be
+// programmed, aligned to a double-word address.
+
+static uint32_t flash_get_page(uint32_t addr)
+{
+    return (addr - FLASH_BASE) / FLASH_PAGE_SIZE;
+}
+
+static void flash_program_double_word(uint32_t addr, uint64_t data)
+{
+    /* Program first word */
+    *(uint32_t *)addr = (uint32_t)data;
+    /* Barrier to ensure programming is performed in 2 steps, in right order
+       (independently of compiler optimization behavior) */
+    __ISB();
+    /* Program second word */
+    *(uint32_t *)(addr + 4U) = (uint32_t)(data >> 32U);
+}
+
+void flash_page_erase(uint32_t addr)
+{
+    FLASH->KEYR = 0x45670123;
+    FLASH->KEYR = 0xCDEF89AB;
+    while (READ_BIT(FLASH->SR, FLASH_SR_BSY1)) {}
+    while (READ_BIT(FLASH->SR, FLASH_SR_CFGBSY)) {}
+    SET_BIT(FLASH->CR, FLASH_CR_PER);
+    SET_BIT(FLASH->CR, FLASH_CR_EOPIE);
+    MODIFY_REG(FLASH->CR, FLASH_CR_PNB_Msk, flash_get_page(addr) << FLASH_CR_PNB_Pos);
+    SET_BIT(FLASH->CR, FLASH_CR_STRT);
+    while (READ_BIT(FLASH->SR, FLASH_SR_CFGBSY)) {}
+    CLEAR_BIT(FLASH->CR, FLASH_CR_PER);
+}
+
+void flash_write_data(uint32_t addr, uint8_t *data, uint16_t len)
+{
+    // addr must be double-word aligned
+    if ((addr & (8 - 1)) != 0)
+        return;
+    while (READ_BIT(FLASH->SR, FLASH_SR_BSY1)) {}
+    while (READ_BIT(FLASH->SR, FLASH_SR_CFGBSY)) {}
+    SET_BIT(FLASH->CR, FLASH_CR_PG);
+
+    uint64_t z = 0;
+    uint8_t  step = 0;
+
+    while (len--) {
+        z |= (uint64_t)*data << (step * 8);
+        data++;
+        step++;
+        if (step == 8) {
+            step = 0;
+            flash_program_double_word(addr, z);
+            while (READ_BIT(FLASH->SR, FLASH_SR_CFGBSY)) {}
+            while (READ_BIT(FLASH->SR, FLASH_SR_EOP) == 0) {}
+            SET_BIT(FLASH->SR, FLASH_SR_EOP);
+            addr += 8;
+            z = 0;
+        }
+    }
+
+    if (step) {
+        flash_program_double_word(addr, z);
+        while (READ_BIT(FLASH->SR, FLASH_SR_CFGBSY)) {}
+        while (READ_BIT(FLASH->SR, FLASH_SR_EOP) == 0) {}
+        SET_BIT(FLASH->SR, FLASH_SR_EOP);
+    }
+
+    CLEAR_BIT(FLASH->CR, FLASH_CR_PG);
 }
 
 #endif // DRV_BASIC_IMPLEMENTATION_DONE_

@@ -5,8 +5,7 @@
 
 #include "ept_settings.h"
 
-#define FLASH_LL_IMPLEMENTATION
-#include "FLASH_LL.h"
+#include "drv_basic.h" // flash_page_erase() / flash_write_data()
 
 settings_t settings;
 
@@ -73,7 +72,7 @@ static uint32_t settings_crc32(const uint8_t *data, uint16_t len)
 // ---- Flash backend ------------------------------------------------------------
 // Define SETTINGS_FLASH_ADDR in settings_cfg.h to enable.
 // The address must be the start of a flash page not used by the linker.
-// Erase/write are provided externally (FLASH_LL.h):
+// Erase/write are provided by drv_basic:
 //   void flash_page_erase(uint32_t addr);
 //   void flash_write_data(uint32_t addr, uint8_t *data, uint16_t len);
 #ifdef SETTINGS_FLASH_ADDR
