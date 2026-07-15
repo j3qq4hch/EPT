@@ -152,7 +152,7 @@ int main(void)
 | `drv_basic.h` + `drv_basic_stm32*.h` | GPIO/UART(DMA)/flash/`drv_sleep()` | LL-заголовки ST; `#define DRV_BASIC_IMPLEMENTATION` в одном TU |
 | `uart_pt.h` | неблокирующие UART-операции для потоков | drv_basic |
 | `ept_cli.c/.h` | CLI через UART (команды `h`, `ept`, `dbg`, `loops`, ...) | uart_pt, файл `cli_cmd_map.h` (шаблон прилагается), настройки CLI_* в `ept_cfg.h` |
-| `ept_settings.c/.h` | настройки в flash с CRC и CLI-командой `set` | файл `settings_cfg.h`, flash-опы из drv_basic |
+| `ept_settings.c/.h` | настройки в flash с CRC и CLI-командой `set` | файл `settings_cfg.h` (шаблон прилагается), flash-опы из drv_basic, зарезервированная страница в линкер-скрипте |
 | `log.h` | отладочный вывод с уровнями на поток | `DEBUG_PRINT()` в `ept_cfg.h` |
 | `to_string.h` | `to_string()` через `_Generic`, расширяемый проектными типами | файл `resources.h` с `EPT_TYPES_LIST` |
 | `PROFILER` (в `ept_cfg.h`) | максимальное время исполнения каждого потока, команда `prof` | CMSIS-заголовок в `ept_cfg.h`, `EPT_CPU_FREQ_HZ` в препроцессоре |

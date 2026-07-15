@@ -11,6 +11,21 @@
 // #define PROFILER        // measure per-thread and loop execution time
 // #define LOW_POWER_MODE  // drv_sleep() (WFI) when no thread returned EPT_ACTIVE
 
+// ---- CLI (only if ept_cli.c is in the build) ----------------------------------
+// #define CLI_UART          (&cli_uart)   // uart_t* the CLI runs on
+// #define CLI_BUFLEN        192           // command/response buffer size
+// #define CLI_MAX_ARGNUM    8             // max arguments per command
+// #define CLI_GREETINGS_STR "Greetings from EPT CLI"
+
+// ---- Log (only if log.h is used) -----------------------------------------------
+// Output backend for DBG_PRINTF/LOG_PRINTF. Must not return until the string
+// buffer may be reused (log.h shares one buffer between calls). Without this
+// define all logging macros compile to nothing.
+// #define DEBUG_PRINT(str) \
+//     do { uart_write(&cli_uart, (const uint8_t *)(str), (uint16_t)strlen(str)); \
+//          while (uart_tx_busy(&cli_uart));                                      \
+//     } while (0)
+
 // ---- Profiler: platform CMSIS header ----------------------------------------
 // EPT_CPU_FREQ_HZ must be defined in your build system, NOT here:
 //   e.g. -DEPT_CPU_FREQ_HZ=48000000UL
