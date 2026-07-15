@@ -5,6 +5,10 @@
 #define EPT_SCHEDULER_IMPLEMENTATION
 #include "ept_cfg.h"
 
+#ifdef LOW_POWER_MODE
+#include "drv_basic.h" // drv_sleep()
+#endif
+
 #include "snprintf_compat.h"
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -59,27 +63,21 @@ static uint32_t timestamp_dif_ticks(timestamp_t *start, timestamp_t *stop)
 
 // ---- Low-power mode ---------------------------------------------------------
 #ifdef LOW_POWER_MODE
-static uint32_t    lp_wake_time;
-static uint32_t    lp_min_wake_time;
-static ept_timer_t lp_sleep_timer;
-static uint8_t     lp_state;
-static uint16_t    lp_active_tasks;
-volatile uint8_t   ept_tc_flag; // set by SysTick ISR (and any other wakeup ISR)
+static uint8_t lp_any_active;
 #endif
 
 // ---- Scheduler --------------------------------------------------------------
 void ept_scheduler(void)
 {
     for (uint8_t i = 0; i < THREADNUM; i++) {
-        PT_INIT(&ept_arr[i]);
+        EPT_INIT(&ept_arr[i]);
         ept_arr[i].state = threadlist[i].init_state;
         dbg_level[i]     = threadlist[i].init_dbg_level;
     }
 
     while (1) {
 #ifdef LOW_POWER_MODE
-        lp_active_tasks  = 0;
-        lp_min_wake_time = UINT32_MAX;
+        lp_any_active = 0;
 #endif
 #ifdef PROFILER
         get_timestamp(&loop_begin_ts);
@@ -96,14 +94,8 @@ void ept_scheduler(void)
 #endif
 
 #ifdef LOW_POWER_MODE
-                lp_state = threadlist[i].thread(&ept_arr[i]);
-                if (lp_state == EPT_SLEEPING) {
-                    lp_wake_time = ept_arr[i].t.interval + ept_arr[i].t.set_time - ept_tc;
-                    if (lp_wake_time < lp_min_wake_time)
-                        lp_min_wake_time = lp_wake_time;
-                } else if (lp_state == EPT_YIELDED) {
-                    lp_active_tasks++;
-                }
+                if (threadlist[i].thread(&ept_arr[i]) == EPT_ACTIVE)
+                    lp_any_active = 1;
 #else
                 threadlist[i].thread(&ept_arr[i]);
 #endif
@@ -124,16 +116,12 @@ void ept_scheduler(void)
             loop_max_raw = profiler_dif;
 #endif
 
+        // Any wakeup source (SysTick included) is an interrupt, so the sleep
+        // is bounded by one tick and every blocked condition is re-polled at
+        // tick rate — nothing can be missed.
 #ifdef LOW_POWER_MODE
-        if (!lp_active_tasks) {
-            if (lp_min_wake_time != UINT32_MAX)
-                ept_timer_set(&lp_sleep_timer, lp_min_wake_time);
-            do {
-                ept_tc_flag = 0;
-                __WFI();
-                if (!ept_tc_flag) break; // non-SysTick ISR fired — check tasks immediately
-            } while (lp_min_wake_time != UINT32_MAX && !ept_timer_expired(&lp_sleep_timer));
-        }
+        if (!lp_any_active)
+            drv_sleep();
 #endif
     }
 }
@@ -181,7 +169,7 @@ void thread_cmd(const thread_record *record, ept_state_t state)
     if (record == NULL) return;
     uint32_t index = (uint32_t)(record - threadlist);
     ept_arr[index].state = state;
-    PT_INIT(&ept_arr[index]);
+    EPT_INIT(&ept_arr[index]);
 }
 
 void thread_set_debug(const thread_record *record, uint8_t lvl)

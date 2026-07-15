@@ -18,7 +18,7 @@ cli_gen_fn_t cli_gen;
 
 // ---- Thread state -----------------------------------------------------------
 static char          cli_buf[CLI_BUFLEN + 1];
-static struct pt     child_pt;
+static struct ept    child_ept;
 static uart_pt_ctx_t ctx = { .uart = CLI_UART };
 
 // ---- Retval strings ---------------------------------------------------------
@@ -71,7 +71,7 @@ EPT_THREAD(cli(struct ept *ept))
 
     EPT_BEGIN(ept);
 
-    UART_PT_PRINTF(ept, &child_pt, &ctx,
+    UART_PT_PRINTF(ept, &child_ept, &ctx,
                    cli_buf, sizeof(cli_buf), "\r\n%s\r\n>", CLI_GREETINGS_STR);
 
     while (1) {
@@ -79,7 +79,7 @@ EPT_THREAD(cli(struct ept *ept))
         uart_flush_rx(ctx.uart);
         memset(cli_buf, 0, sizeof(cli_buf));
 
-        UART_PT_READLINE(ept, &child_pt, &ctx, cli_buf, CLI_BUFLEN);
+        UART_PT_READLINE(ept, &child_ept, &ctx, cli_buf, CLI_BUFLEN);
         if (!ctx.cnt) continue;
 
         cli_gen  = NULL;
@@ -89,7 +89,7 @@ EPT_THREAD(cli(struct ept *ept))
 
         if (s_retval == CLI_LONG_RESPONSE) {
             if (cli_gen == NULL) {
-                UART_PT_PRINT(ept, &child_pt, &ctx,
+                UART_PT_PRINT(ept, &child_ept, &ctx,
                               (char *)"\r\nERR: CLI_LONG_RESPONSE without generator");
             } else {
                 s_gen_state = 0;
@@ -97,15 +97,15 @@ EPT_THREAD(cli(struct ept *ept))
                     s_gen_written = cli_gen(s_gen_state,
                                             cli_response_buf, cli_max_resp_len);
                     if (!s_gen_written) break;
-                    UART_PT_PRINT(ept, &child_pt, &ctx, cli_response_buf);
+                    UART_PT_PRINT(ept, &child_ept, &ctx, cli_response_buf);
                     s_gen_state++;
                 }
             }
         } else {
-            UART_PT_PRINT(ept, &child_pt, &ctx, cli_buf + ctx.cnt + 1);
+            UART_PT_PRINT(ept, &child_ept, &ctx, cli_buf + ctx.cnt + 1);
         }
 
-        UART_PT_PRINT(ept, &child_pt, &ctx, (char *)"\r\n>");
+        UART_PT_PRINT(ept, &child_ept, &ctx, (char *)"\r\n>");
     }
     
     EPT_END(ept);

@@ -2,7 +2,7 @@
 #define UART_PT_H_
 
 #include <string.h>
-#include "pt.h"
+#include "ept.h"
 #include "drv_basic.h"
 
 #include "snprintf_compat.h"
@@ -15,8 +15,8 @@ typedef struct {
     char     stop_char;
 } uart_pt_ctx_t;
 
-PT_THREAD(uart_pt_write   (struct pt *pt, uart_pt_ctx_t *ctx));
-PT_THREAD(uart_pt_readline(struct pt *pt, uart_pt_ctx_t *ctx));
+EPT_THREAD(uart_pt_write   (struct ept *ept, uart_pt_ctx_t *ctx));
+EPT_THREAD(uart_pt_readline(struct ept *ept, uart_pt_ctx_t *ctx));
 
 #define UART_PT_READLINE(PT, CHILD, CTX, BUF, BUFLEN)              \
     do {                                                             \
@@ -47,21 +47,21 @@ PT_THREAD(uart_pt_readline(struct pt *pt, uart_pt_ctx_t *ctx));
 #ifndef UART_PT_IMPLEMENTATION_DONE_
 #define UART_PT_IMPLEMENTATION_DONE_
 
-PT_THREAD(uart_pt_write(struct pt *pt, uart_pt_ctx_t *ctx))
+EPT_THREAD(uart_pt_write(struct ept *ept, uart_pt_ctx_t *ctx))
 {
-    PT_BEGIN(pt);
-    PT_WAIT_WHILE(pt, uart_tx_busy(ctx->uart));
+    EPT_BEGIN(ept);
+    EPT_WAIT_WHILE(ept, uart_tx_busy(ctx->uart));
     uart_write(ctx->uart, (const uint8_t *)ctx->buf, ctx->buflen);
-    PT_WAIT_WHILE(pt, uart_tx_busy(ctx->uart));
-    PT_END(pt);
+    EPT_WAIT_WHILE(ept, uart_tx_busy(ctx->uart));
+    EPT_END(ept);
 }
 
-PT_THREAD(uart_pt_readline(struct pt *pt, uart_pt_ctx_t *ctx))
+EPT_THREAD(uart_pt_readline(struct ept *ept, uart_pt_ctx_t *ctx))
 {
-    PT_BEGIN(pt);
+    EPT_BEGIN(ept);
     ctx->cnt = 0;
     while (ctx->cnt < ctx->buflen - 1) {
-        PT_WAIT_UNTIL(pt, uart_available(ctx->uart));
+        EPT_WAIT_UNTIL(ept, uart_available(ctx->uart));
         ctx->buf[ctx->cnt] = (char)uart_getc(ctx->uart);
         if ((uint8_t)ctx->buf[ctx->cnt] == 127) {
             if (ctx->cnt) ctx->cnt--;
@@ -73,7 +73,7 @@ PT_THREAD(uart_pt_readline(struct pt *pt, uart_pt_ctx_t *ctx))
         }
         ctx->cnt++;
     }
-    PT_END(pt);
+    EPT_END(ept);
 }
 
 #endif // UART_PT_IMPLEMENTATION_DONE_

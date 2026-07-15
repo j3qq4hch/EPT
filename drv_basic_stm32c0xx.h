@@ -7,6 +7,12 @@
 #include "stm32c0xx_ll_dma.h"
 #include "stm32c0xx_ll_gpio.h"
 
+// ---- Low power ----------------------------------------------------------------
+// Sleep mode until any enabled interrupt (SysTick included) fires.
+// Peripheral clocks keep running, so it is always safe to enter.
+
+static inline void drv_sleep(void) { __WFI(); }
+
 // ---- GPIO -------------------------------------------------------------------
 
 typedef struct {

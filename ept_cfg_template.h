@@ -7,7 +7,7 @@
 
 // ---- Optional features ------------------------------------------------------
 // #define PROFILER        // measure per-thread and loop execution time
-// #define LOW_POWER_MODE  // enter WFI when all threads are idle
+// #define LOW_POWER_MODE  // drv_sleep() (WFI) when no thread returned EPT_ACTIVE
 
 // ---- Profiler: platform CMSIS header ----------------------------------------
 // EPT_CPU_FREQ_HZ must be defined in your build system, NOT here:

@@ -20,15 +20,8 @@ extern void                *thread_ctx;
 
 void ept_scheduler(void);
 
-#ifdef LOW_POWER_MODE
-extern volatile uint8_t ept_tc_flag;
-#endif
-
 static inline void ept_scheduler_tick(void) {
     ept_tick();
-#ifdef LOW_POWER_MODE
-    ept_tc_flag = 1;
-#endif
 }
 
 const thread_record *thread_by_name(const char *name);
